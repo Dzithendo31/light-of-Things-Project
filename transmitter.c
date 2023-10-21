@@ -77,7 +77,7 @@ uint32_t ADCtoCCR(uint32_t adc_val);
 
 uint32_t adc_value;
 uint8_t buttonPressed = 0;
-uint8_t startFlag = 0b10101010;
+uint8_t startFlag = 0b10101010;//170d
 uint8_t endFlag = 0b10011001;
 uint8_t msgSent = 0;
 int main(void)
@@ -132,6 +132,10 @@ int main(void)
 			}
 			binary[12] = '\0';
 
+			//Send the start bit 1 for 1 second
+			HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
+			HAL_Delay(1000);
+			/*
 		  for (int i = 7; i >= 0; i--) {
 		      if (startFlag & (1 << i)) {
 		          HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
@@ -140,8 +144,7 @@ int main(void)
 		          HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 		      }
 		      HAL_Delay(500);
-		  }
-
+		  }*/
 
 
 		  // Blink LED7 according to the binary value
@@ -154,7 +157,7 @@ int main(void)
 		          // Adjust the delay based on your requirements
 		      HAL_Delay(500);
 		  }
-
+		  /*
 		  for (int i = 7; i >= 0; i--) {
 			  if (endFlag & (1 << i)) {
 				  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
@@ -162,7 +165,7 @@ int main(void)
 				  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 			  }
 			  HAL_Delay(500);
-		  }
+		  }*/
 
 		  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 		  buttonPressed =0;
