@@ -57,6 +57,7 @@ uint32_t delay_t = 500; // Initialise delay to 500ms
 uint32_t delay_fast = 10; // Initialise delay to 500ms
 uint32_t adc_val;
 uint16_t littleEndianNumber; // 12-bit number
+uint8_t buttonPressed = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,9 +71,11 @@ void EXTI0_1_IRQHandler(void);
 void writeLCD(char *char_in);
 uint32_t pollADC(void);
 uint32_t ADCtoCCR(uint32_t adc_val);
-uint16_t Listen_value(uint16_t littleEndianNumber);
+uint8_t listen_start(uint8_t littleEndianNumber);
+uint16_t recv_data(uint16_t data);
+uint8_t start(void);
 /* USER CODE END PFP */
-
+char arr[70];
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
@@ -98,7 +101,27 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  uint16_t littleEndianNumber = Listen_value(littleEndianNumber);
+	  if(buttonPressed){
+		  	  writeLCD("button pressed");
+		  	  char buffer[70];  // Buffer to store the ADC value as a string
+		  	  /*uint8_t str_bit = listen_start(str_bit);
+		  	  snprintf(buffer, sizeof(buffer), "%lu", str_bit);
+		  	  writeLCD(buffer);
+		  	  */
+		  	  while(!start());
+		  	  lcd_command(CLEAR);
+
+		  	  lcd_putstring("Starting...");
+
+		  	  if(1){ //0b10101010
+		  		  //Start listen for the actaul data
+		  		  char buf[70];
+		  		  uint16_t data = recv_data(data);
+		  		  snprintf(buf, sizeof(buf), "%lu", data);
+		  		  writeLCD(buf);
+		  	  }
+		  buttonPressed = 0;
+	  }
 
   }
   /* USER CODE END 3 */
@@ -125,16 +148,15 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 /*
  * listen to a for a12-bit vlaue
  * */
-
-uint16_t Listen_value(uint16_t littleEndianNumber){
+uint16_t recv_data(uint16_t data){
 	int bitIndex; // Index to keep track of which bit to read
 	  /* Infinite loop */
 	bitIndex = 0; // Initialize bit index
 
 	//assuming reading a 12-bit number
-	for(int i=0;i<12;i++){
+	for(int i=0;i<=12;i++){
 		uint32_t adc_value = pollADC();
-		if (adc_value < 1000) {
+		if (adc_value > 500) {
 			// Toggle LED0
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 			littleEndianNumber |= (1U << bitIndex);
@@ -143,14 +165,46 @@ uint16_t Listen_value(uint16_t littleEndianNumber){
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 			littleEndianNumber &= ~(1U << bitIndex);
 		}
-		char arr[70];
-		sprintf(arr,"hgeloo",adc_value);
-		writeLCD(arr);
 		// Increment the bit index and wrap around if needed
 		bitIndex = (bitIndex + 1) % 12;
-		HAL_Delay(delay_fast);
+		HAL_Delay(500);
 	}
 	return littleEndianNumber;
+}
+uint8_t listen_start(uint8_t littleEndianNumber){
+	int bitIndex; // Index to keep track of which bit to read
+	  /* Infinite loop */
+	bitIndex = 0; // Initialize bit index
+
+	//assuming reading a 12-bit number
+	for(int i=0;i<=8;i++){
+		uint32_t adc_value = pollADC();
+		if (adc_value > 500) {
+			// Toggle LED0
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+			littleEndianNumber |= (1U << bitIndex);
+				      }
+		else {
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+			littleEndianNumber &= ~(1U << bitIndex);
+		}
+		// Increment the bit index and wrap around if needed
+		bitIndex = (bitIndex + 1) % 12;
+		HAL_Delay(500);
+	}
+	return littleEndianNumber;
+}
+
+uint8_t start(void){
+	uint32_t adc_value = pollADC();
+	if (adc_value > 500) {
+		HAL_Delay(700);
+		uint32_t adc_value = pollADC();
+		if (adc_value > 500) {
+			return 1;
+		}
+	}
+	return 0;
 }
 void SystemClock_Config(void)
 {
@@ -357,18 +411,23 @@ static void MX_GPIO_Init(void)
   HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
 /* USER CODE END MX_GPIO_Init_2 */
 }
-
+volatile uint32_t lastButtonPressTime = 0;
 /* USER CODE BEGIN 4 */
 void EXTI0_1_IRQHandler(void)
 {
-	// TODO: Add code to switch LED7 delay frequency
-	if(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0)){
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
-		HAL_Delay(delay_t);
-		littleEndianNumber = Listen_value(littleEndianNumber);
+
+		// Checking the time since the last button press so as to debunce
+		uint32_t currentTime = HAL_GetTick();
+    	if (currentTime - lastButtonPressTime > 200) {
+    		static char binary[13]; // Considering a 12-bit ADC, we need 13 characters (12 bits + 1 for the null terminator)
+
+    		buttonPressed = 1;
+
+			lastButtonPressTime = currentTime;
+		}
+
 		HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
-	}
-  
+
 
 }
 
