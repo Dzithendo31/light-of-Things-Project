@@ -58,6 +58,8 @@ uint32_t delay_fast = 10; // Initialise delay to 500ms
 uint32_t adc_val;
 uint16_t littleEndianNumber; // 12-bit number
 uint8_t buttonPressed = 0;
+uint8_t buttonPressedII = 0;
+uint8_t msgRecv = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -74,6 +76,8 @@ uint32_t ADCtoCCR(uint32_t adc_val);
 uint8_t listen_start(uint8_t littleEndianNumber);
 uint16_t recv_data(uint16_t data);
 uint8_t start(void);
+void flashLEDQuickly(void);
+uint8_t check(uint8_t data);
 /* USER CODE END PFP */
 char arr[70];
 /* Private user code ---------------------------------------------------------*/
@@ -96,33 +100,49 @@ int main(void)
   MX_ADC_Init();
   MX_TIM3_Init();
   init_LCD();
-
-
+  lcd_command(CLEAR);
+  lcd_putstring("Press SW0");
+  lcd_command(0xC0);
+  lcd_putstring("to ListenX");
   /* USER CODE BEGIN WHILE */
+
   while (1)
   {
 	  if(buttonPressed){
-		  	  writeLCD("button pressed");
+		  	  lcd_command(CLEAR);
+		  	  lcd_putstring("Listening");
 		  	  char buffer[70];  // Buffer to store the ADC value as a string
 		  	  /*uint8_t str_bit = listen_start(str_bit);
 		  	  snprintf(buffer, sizeof(buffer), "%lu", str_bit);
 		  	  writeLCD(buffer);
 		  	  */
 		  	  while(!start());
-		  	  lcd_command(CLEAR);
-
-		  	  lcd_putstring("Starting...");
-
 		  	  if(1){ //0b10101010
 		  		  //Start listen for the actaul data
 		  		  char buf[70];
 		  		  uint16_t data = recv_data(data);
 		  		  snprintf(buf, sizeof(buf), "%lu", data);
+		  		  msgRecv++;
 		  		  writeLCD(buf);
+
 		  	  }
 		  buttonPressed = 0;
 	  }
-
+	  if(buttonPressedII){
+		  //Seond button for checkPoint
+		  lcd_command(CLEAR);
+		  lcd_putstring("LSN CHECKP Val");
+		  char buffer[70];  // Buffer to store the ADC value as a string
+		  while(!start());
+		  if(1){ //0b10101010
+		  	//Start listen for the actaul data
+		  	char buf[70];
+		  	uint16_t data = recv_data(data);
+		  	snprintf(buf, sizeof(buf), "%lu", data);
+		  	check(data);
+		  }
+		  buttonPressedII =0;
+	  }
   }
   /* USER CODE END 3 */
 }
@@ -148,6 +168,30 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 /*
  * listen to a for a12-bit vlaue
  * */
+uint8_t check(uint8_t data){
+	if(data==msgRecv){
+		lcd_command(CLEAR);
+		lcd_putstring("CheckPoint Passed");
+		return 1;
+	}
+	else{
+		lcd_command(CLEAR);
+		lcd_putstring("CheckPoint Failed");
+		msgRecv = data;
+		flashLEDQuickly();
+		return 0;
+	}
+}
+
+void flashLEDQuickly(void) {
+    // Flash the LED quickly for 2 seconds.
+    for (int i = 0; i < 20; i++) {  // Toggle the LED state 20 times for quick flashing.
+    	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
+        HAL_Delay(100);  // Delay for 100 milliseconds (0.1 seconds) between each toggle.
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
+    }
+    // Ensure the LED is turned off when the flashing is done.
+}
 uint16_t recv_data(uint16_t data){
 	int bitIndex; // Index to keep track of which bit to read
 	  /* Infinite loop */
@@ -169,7 +213,7 @@ uint16_t recv_data(uint16_t data){
 		bitIndex = (bitIndex + 1) % 12;
 		HAL_Delay(500);
 	}
-	return littleEndianNumber;
+	return littleEndianNumber>>1;
 }
 uint8_t listen_start(uint8_t littleEndianNumber){
 	int bitIndex; // Index to keep track of which bit to read
@@ -371,8 +415,8 @@ static void MX_GPIO_Init(void)
 {
   LL_EXTI_InitTypeDef EXTI_InitStruct = {0};
   LL_GPIO_InitTypeDef GPIO_InitStruct = {0};
-/* USER CODE BEGIN MX_GPIO_Init_1 */
-/* USER CODE END MX_GPIO_Init_1 */
+  /* USER CODE BEGIN MX_GPIO_Init_1 */
+  /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
   LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_GPIOF);
@@ -406,13 +450,29 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
   LL_GPIO_Init(LED7_GPIO_Port, &GPIO_InitStruct);
 
-/* USER CODE BEGIN MX_GPIO_Init_2 */
+  /**/
+  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE1); // Add EXTI source for Button1
+
+  /**/
+  LL_GPIO_SetPinPull(Button1_GPIO_Port, Button1_Pin, LL_GPIO_PULL_UP); // Configure Button1
+  LL_GPIO_SetPinMode(Button1_GPIO_Port, Button1_Pin, LL_GPIO_MODE_INPUT);
+
+  /**/
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_1; // Use EXTI Line 1 for Button1
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
+  LL_EXTI_Init(&EXTI_InitStruct);
+
+  /* USER CODE BEGIN MX_GPIO_Init_2 */
   HAL_NVIC_SetPriority(EXTI0_1_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_1_IRQn);
-/* USER CODE END MX_GPIO_Init_2 */
+  /* USER CODE END MX_GPIO_Init_2 */
 }
+
 volatile uint32_t lastButtonPressTime = 0;
 /* USER CODE BEGIN 4 */
+/*
 void EXTI0_1_IRQHandler(void)
 {
 
@@ -421,14 +481,35 @@ void EXTI0_1_IRQHandler(void)
     	if (currentTime - lastButtonPressTime > 200) {
     		static char binary[13]; // Considering a 12-bit ADC, we need 13 characters (12 bits + 1 for the null terminator)
 
-    		buttonPressed = 1;
+    		if (LL_GPIO_IsInputPinSet(Button0_GPIO_Port, Button0_Pin)) {
+    		    buttonPressed = 1; // Button 0 is pressed
+    		} else{ //if (LL_GPIO_IsInputPinSet(Button1_GPIO_Port, Button1_Pin)) {
+    			buttonPressedII = 1; // Button 1 is pressed
+    		}
 
 			lastButtonPressTime = currentTime;
 		}
 
 		HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
+		HAL_GPIO_EXTI_IRQHandler(Button1_Pin);
 
 
+}*/
+#define BUTTON0_PIN GPIO_PIN_0
+#define BUTTON1_PIN GPIO_PIN_1
+void EXTI0_1_IRQHandler(void)
+{
+    if (__HAL_GPIO_EXTI_GET_IT(BUTTON0_PIN) != RESET)
+    {
+        __HAL_GPIO_EXTI_CLEAR_IT(BUTTON0_PIN);
+        buttonPressed = 1; // Button 0 is pressed
+    }
+
+    if (__HAL_GPIO_EXTI_GET_IT(BUTTON1_PIN) != RESET)
+    {
+        __HAL_GPIO_EXTI_CLEAR_IT(BUTTON1_PIN);
+        buttonPressedII = 1; // Button 1 is pressed
+    }
 }
 
 // TODO: Complete the writeLCD function
@@ -436,9 +517,15 @@ void writeLCD(char *char_in){
     delay(3000);
 	lcd_command(CLEAR);
 
+	lcd_putstring("ADC value: ");
 	lcd_putstring(char_in);
-}
+	lcd_command(0xC0);
+	lcd_putstring("Msgs Sent: ");
 
+	char msgSentNum[3];
+	sprintf(msgSentNum, "%d", msgRecv);
+	lcd_putstring(msgSentNum);
+}
 // Get ADC value
 uint32_t pollADC(void){
   // TODO: Complete function body to get ADC val
