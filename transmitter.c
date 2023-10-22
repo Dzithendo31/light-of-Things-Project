@@ -76,10 +76,12 @@ uint32_t ADCtoCCR(uint32_t adc_val);
   */
 
 uint32_t adc_value;
-uint8_t buttonPressed = 0;
+volatile uint8_t buttonPressed = 0;
 uint8_t startFlag = 0b10101010;//170d
 uint8_t endFlag = 0b10011001;
-uint8_t msgSent = 0;
+volatile uint8_t msgSent = 0;
+volatile uint8_t sendADC = 0;
+volatile uint8_t sendCheckpoint = 0;
 int main(void)
 {
   /* USER CODE BEGIN 1 */
@@ -107,9 +109,6 @@ int main(void)
   /* USER CODE BEGIN 2 */
   init_LCD();
 
-  // PWM setup
-  uint32_t CCR = 0;
-  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_3); // Start PWM on TIM3 Channel 3
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -119,18 +118,32 @@ int main(void)
 
 	// Toggle LED0
 	  if (buttonPressed){
-			lcd_command(CLEAR);
 
-			lcd_putstring("Sending Msg...");
-
-			uint32_t adc_value = pollADC();
-
-			// Convert ADC value to a 12-bit binary representation
 			char binary[13];
-			for (int i = 11; i >=0 ; i--) {
-				binary[i] = (adc_value & (1 << i)) ? '1' : '0';
+			if (sendADC ==1 ){
+				lcd_command(CLEAR);
+				lcd_putstring("Sending Msg...");
+
+				uint32_t adc_value = pollADC();
+
+				// Convert ADC value to a 12-bit binary representation
+				for (int i = 11; i >=0 ; i--) {
+					binary[i] = (adc_value & (1 << i)) ? '1' : '0';
+				}
 			}
+
+			if (sendCheckpoint == 1){
+				lcd_command(CLEAR);
+				lcd_putstring("Checkpoint...");
+				for (int i = 11; i >=0 ; i--) {
+					binary[i] = (msgSent & (1 << i)) ? '1' : '0';
+				}
+
+				sendCheckpoint = 0;
+			}
+
 			binary[12] = '\0';
+
 
 			//Send the start bit 1 for 1 second
 			HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
@@ -146,6 +159,15 @@ int main(void)
 		      HAL_Delay(500);
 		  }*/
 
+		  // message type -  bit: 0: ADC, 1:checkpoint
+		  if (sendADC == 1){
+			  sendADC = 0;
+			  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
+			  ++msgSent;
+		  }
+		  HAL_Delay(500);
+
+
 
 		  // Blink LED7 according to the binary value
 		  for (int i = 0; i < 12; i++) {
@@ -156,6 +178,7 @@ int main(void)
 		      }
 		          // Adjust the delay based on your requirements
 		      HAL_Delay(500);
+
 		  }
 		  /*
 		  for (int i = 7; i >= 0; i--) {
@@ -169,7 +192,7 @@ int main(void)
 
 		  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 		  buttonPressed =0;
-		  ++msgSent;
+
 	  }
 
 	// ADC to LCD; TODO: Read POT1 value and write to LCD
@@ -180,9 +203,6 @@ int main(void)
 	snprintf(buffer, sizeof(buffer), "%lu", adc_value);
 	writeLCD(buffer);
 
-	// Update PWM value; TODO: Get CRR
-	CCR = ADCtoCCR(adc_value);
-//	__HAL_TIM_SetCompare(&htim3, TIM_CHANNEL_3, CCR);
 
 	// Wait for delay ms
 	HAL_Delay (1000);
@@ -377,10 +397,12 @@ static void MX_GPIO_Init(void)
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE0);
 
   /**/
-  LL_GPIO_SetPinPull(Button0_GPIO_Port, Button0_Pin, LL_GPIO_PULL_UP);
+  LL_GPIO_SetPinPull(GPIOA, LL_GPIO_PIN_0, LL_GPIO_PULL_UP);
+  LL_GPIO_SetPinPull(GPIOA, LL_EXTI_LINE_1, LL_GPIO_PULL_UP);
 
   /**/
-  LL_GPIO_SetPinMode(Button0_GPIO_Port, Button0_Pin, LL_GPIO_MODE_INPUT);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_0, LL_GPIO_MODE_INPUT);
+  LL_GPIO_SetPinMode(GPIOA, LL_EXTI_LINE_1, LL_GPIO_MODE_INPUT);
 
   /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_0;
@@ -389,6 +411,12 @@ static void MX_GPIO_Init(void)
   EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
   LL_EXTI_Init(&EXTI_InitStruct);
 
+
+  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_1; // Configure for line 1 for PA1
+  EXTI_InitStruct.LineCommand = ENABLE;
+  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
+  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING; // You can change the trigger type as per your requirement
+  LL_EXTI_Init(&EXTI_InitStruct);
   /**/
   GPIO_InitStruct.Pin = LED7_Pin;
   GPIO_InitStruct.Mode = LL_GPIO_MODE_OUTPUT;
@@ -403,23 +431,37 @@ static void MX_GPIO_Init(void)
 /* USER CODE END MX_GPIO_Init_2 */
 }
 
-volatile uint32_t lastButtonPressTime = 0;
+volatile uint32_t lastButton0PressTime = 0;
+volatile uint32_t lastButton1PressTime = 0;
 
 /* USER CODE BEGIN 4 */
 void EXTI0_1_IRQHandler(void)
 {
-
+	if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_0)){
 		// Checking the time since the last button press so as to debunce
 		uint32_t currentTime = HAL_GetTick();
-    	if (currentTime - lastButtonPressTime > 200) {
-    		static char binary[13]; // Considering a 12-bit ADC, we need 13 characters (12 bits + 1 for the null terminator)
-
+    	if (currentTime - lastButton0PressTime > 200) {
     		buttonPressed = 1;
-
-			lastButtonPressTime = currentTime;
+    		sendADC = 1;
+    		lastButton0PressTime = currentTime;
 		}
 
-		HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
+		HAL_GPIO_EXTI_IRQHandler(LL_EXTI_LINE_0); // Clear interrupt flags
+	}
+
+
+	 if (LL_EXTI_IsActiveFlag_0_31(LL_EXTI_LINE_1)) {
+		 uint32_t currentTime = HAL_GetTick();
+		 if (currentTime - lastButton1PressTime > 200) {
+			 buttonPressed = 1;
+			 sendCheckpoint = 1;
+		     lastButton1PressTime = currentTime;
+		 }
+
+
+	     HAL_GPIO_EXTI_IRQHandler(LL_EXTI_LINE_1); // Clear interrupt flags for Button 1
+	 }
+
 
 
 }
