@@ -148,24 +148,20 @@ int main(void)
 			//Send the start bit 1 for 1 second
 			HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
 			HAL_Delay(1000);
-			/*
-		  for (int i = 7; i >= 0; i--) {
-		      if (startFlag & (1 << i)) {
-		          HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
-		      } else {
-
-		          HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
-		      }
-		      HAL_Delay(500);
-		  }*/
-
+			HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 		  // message type -  bit: 0: ADC, 1:checkpoint
 		  if (sendADC == 1){
 			  sendADC = 0;
 			  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
 			  ++msgSent;
+			  HAL_Delay(500);
 		  }
-		  HAL_Delay(500);
+		  else{
+			  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
+			  HAL_Delay(500);
+			  HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_RESET);
+		  }
+
 
 
 
