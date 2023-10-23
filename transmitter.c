@@ -115,10 +115,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
 	// Toggle LED0
 	  if (buttonPressed){
-
 			char binary[13];
 			if (sendADC ==1 ){
 				lcd_command(CLEAR);
@@ -127,9 +125,9 @@ int main(void)
 				uint32_t adc_value = pollADC();
 
 				// Convert ADC value to a 12-bit binary representation
-				for (int i = 11; i >=0 ; i--) {
+				for (int i = 12; i >=0 ; i--) {
 					binary[i] = (adc_value & (1 << i)) ? '1' : '0';
-				}
+				};
 			}
 
 			if (sendCheckpoint == 1){
@@ -138,13 +136,10 @@ int main(void)
 				for (int i = 11; i >=0 ; i--) {
 					binary[i] = (msgSent & (1 << i)) ? '1' : '0';
 				}
-
 				sendCheckpoint = 0;
 			}
 
 			binary[12] = '\0';
-
-
 			//Send the start bit 1 for 1 second
 			HAL_GPIO_WritePin(LED7_GPIO_Port, LED7_Pin, GPIO_PIN_SET);
 			HAL_Delay(1000);
@@ -457,8 +452,6 @@ void EXTI0_1_IRQHandler(void)
 
 	     HAL_GPIO_EXTI_IRQHandler(LL_EXTI_LINE_1); // Clear interrupt flags for Button 1
 	 }
-
-
 
 }
 
