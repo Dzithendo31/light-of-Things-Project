@@ -46,7 +46,8 @@ ADC_HandleTypeDef hadc;
 TIM_HandleTypeDef htim3;
 volatile uint8_t globalValue = 0;
 volatile uint8_t resultValue = 0;
-
+uint16_t checkPoint = 0;
+uint16_t data = 0;
 // Timer handler
 TIM_HandleTypeDef htim2;
 
@@ -59,7 +60,7 @@ uint32_t adc_val;
 uint16_t littleEndianNumber; // 12-bit number
 uint8_t buttonPressed = 0;
 uint8_t buttonPressedII = 0;
-uint8_t msgRecv = 0;
+uint16_t msgRecv = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -77,7 +78,8 @@ uint8_t listen_start(uint8_t littleEndianNumber);
 uint16_t recv_data(uint16_t data);
 uint8_t start(void);
 void flashLEDQuickly(void);
-uint8_t check(uint8_t data);
+uint16_t check(uint16_t data);
+uint8_t message_type(void);
 /* USER CODE END PFP */
 char arr[70];
 /* Private user code ---------------------------------------------------------*/
@@ -105,6 +107,14 @@ int main(void)
   lcd_command(0xC0);
   lcd_putstring("to ListenX");
   /* USER CODE BEGIN WHILE */
+  /*
+  while(1){
+	  uint32_t adc_value = pollADC();
+	  char buf[70];
+	  snprintf(buf, sizeof(buf), "%lu",adc_value);
+	  writeLCD(buf);
+  }
+*/
 
   while (1)
   {
@@ -117,31 +127,36 @@ int main(void)
 		  	  writeLCD(buffer);
 		  	  */
 		  	  while(!start());
-		  	  if(1){ //0b10101010
-		  		  //Start listen for the actaul data
-		  		  char buf[70];
-		  		  uint16_t data = recv_data(data);
-		  		  snprintf(buf, sizeof(buf), "%lu", data);
-		  		  msgRecv++;
-		  		  writeLCD(buf);
+
+		  	  //now check the type of message 0= ADC 1=Checkpoint Value
+		  	  if(!message_type()){ //0b0
+		  		  //Start listen for the actaul ADC data
+		  		lcd_command(CLEAR);
+		  		lcd_putstring("Listening for");
+		  		lcd_command(0xC0);
+		  		lcd_putstring("ADC value");
+		  		char buf[70];
+		  		data = recv_data(data);
+		  		snprintf(buf, sizeof(buf), "%lu", data);
+		  		msgRecv++;
+		  		writeLCD(buf);
 
 		  	  }
+		  	  else{
+		  		//Start listen for the actaul data
+		  		lcd_command(CLEAR);
+		  		lcd_putstring("Listening for");
+		  		lcd_command(0xC0);
+		  		lcd_putstring("Checkpoint Count");
+		  		char buf[70];
+		  		///Recive the Checkpoint number
+		  		checkPoint = recv_data(checkPoint);
+		  		//Check it an compare we the value recieved
+		  		check(checkPoint);
+		  		snprintf(buf, sizeof(buf), "%lu", checkPoint);
+		  		writeLCD(buf);
+		  	  }
 		  buttonPressed = 0;
-	  }
-	  if(buttonPressedII){
-		  //Seond button for checkPoint
-		  lcd_command(CLEAR);
-		  lcd_putstring("LSN CHECKP Val");
-		  char buffer[70];  // Buffer to store the ADC value as a string
-		  while(!start());
-		  if(1){ //0b10101010
-		  	//Start listen for the actaul data
-		  	char buf[70];
-		  	uint16_t data = recv_data(data);
-		  	snprintf(buf, sizeof(buf), "%lu", data);
-		  	check(data);
-		  }
-		  buttonPressedII =0;
 	  }
   }
   /* USER CODE END 3 */
@@ -168,15 +183,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 /*
  * listen to a for a12-bit vlaue
  * */
-uint8_t check(uint8_t data){
+uint16_t check(uint16_t data){
 	if(data==msgRecv){
-		lcd_command(CLEAR);
-		lcd_putstring("CheckPoint Passed");
+		lcd_putstring("CheckPoint Status:");
+		lcd_command(0xC0);
+		lcd_putstring("Passed");
 		return 1;
 	}
 	else{
 		lcd_command(CLEAR);
-		lcd_putstring("CheckPoint Failed");
+		lcd_putstring("CheckPoint Status:");
+		lcd_command(0xC0);
+		lcd_putstring("Failed");
 		msgRecv = data;
 		flashLEDQuickly();
 		return 0;
@@ -186,9 +204,8 @@ uint8_t check(uint8_t data){
 void flashLEDQuickly(void) {
     // Flash the LED quickly for 2 seconds.
     for (int i = 0; i < 20; i++) {  // Toggle the LED state 20 times for quick flashing.
-    	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_SET);
+    	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_7);
         HAL_Delay(100);  // Delay for 100 milliseconds (0.1 seconds) between each toggle.
-        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1, GPIO_PIN_RESET);
     }
     // Ensure the LED is turned off when the flashing is done.
 }
@@ -243,6 +260,17 @@ uint8_t start(void){
 	uint32_t adc_value = pollADC();
 	if (adc_value > 500) {
 		HAL_Delay(700);
+		uint32_t adc_value = pollADC();
+		if (adc_value > 500) {
+			return 1;
+		}
+	}
+	return 0;
+}
+uint8_t message_type(void){
+	uint32_t adc_value = pollADC();
+	if (adc_value > 500) {
+		HAL_Delay(500);
 		uint32_t adc_value = pollADC();
 		if (adc_value > 500) {
 			return 1;
@@ -472,7 +500,6 @@ static void MX_GPIO_Init(void)
 
 volatile uint32_t lastButtonPressTime = 0;
 /* USER CODE BEGIN 4 */
-/*
 void EXTI0_1_IRQHandler(void)
 {
 
@@ -481,35 +508,14 @@ void EXTI0_1_IRQHandler(void)
     	if (currentTime - lastButtonPressTime > 200) {
     		static char binary[13]; // Considering a 12-bit ADC, we need 13 characters (12 bits + 1 for the null terminator)
 
-    		if (LL_GPIO_IsInputPinSet(Button0_GPIO_Port, Button0_Pin)) {
-    		    buttonPressed = 1; // Button 0 is pressed
-    		} else{ //if (LL_GPIO_IsInputPinSet(Button1_GPIO_Port, Button1_Pin)) {
-    			buttonPressedII = 1; // Button 1 is pressed
-    		}
+    		buttonPressed = 1;
 
 			lastButtonPressTime = currentTime;
 		}
 
 		HAL_GPIO_EXTI_IRQHandler(Button0_Pin); // Clear interrupt flags
-		HAL_GPIO_EXTI_IRQHandler(Button1_Pin);
 
 
-}*/
-#define BUTTON0_PIN GPIO_PIN_0
-#define BUTTON1_PIN GPIO_PIN_1
-void EXTI0_1_IRQHandler(void)
-{
-    if (__HAL_GPIO_EXTI_GET_IT(BUTTON0_PIN) != RESET)
-    {
-        __HAL_GPIO_EXTI_CLEAR_IT(BUTTON0_PIN);
-        buttonPressed = 1; // Button 0 is pressed
-    }
-
-    if (__HAL_GPIO_EXTI_GET_IT(BUTTON1_PIN) != RESET)
-    {
-        __HAL_GPIO_EXTI_CLEAR_IT(BUTTON1_PIN);
-        buttonPressedII = 1; // Button 1 is pressed
-    }
 }
 
 // TODO: Complete the writeLCD function
@@ -520,7 +526,7 @@ void writeLCD(char *char_in){
 	lcd_putstring("ADC value: ");
 	lcd_putstring(char_in);
 	lcd_command(0xC0);
-	lcd_putstring("Msgs Sent: ");
+	lcd_putstring("Msgs Recved: ");
 
 	char msgSentNum[3];
 	sprintf(msgSentNum, "%d", msgRecv);
