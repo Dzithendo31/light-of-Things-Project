@@ -80,6 +80,7 @@ uint8_t start(void);
 void flashLEDQuickly(void);
 uint16_t check(uint16_t data);
 uint8_t message_type(void);
+void steadyLEDQuickly(void);
 /* USER CODE END PFP */
 char arr[70];
 /* Private user code ---------------------------------------------------------*/
@@ -107,14 +108,13 @@ int main(void)
   lcd_command(0xC0);
   lcd_putstring("to ListenX");
   /* USER CODE BEGIN WHILE */
-  /*
+/*
   while(1){
 	  uint32_t adc_value = pollADC();
 	  char buf[70];
 	  snprintf(buf, sizeof(buf), "%lu",adc_value);
 	  writeLCD(buf);
-  }
-*/
+  }*/
 
   while (1)
   {
@@ -185,9 +185,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
  * */
 uint16_t check(uint16_t data){
 	if(data==msgRecv){
+		lcd_command(CLEAR);
 		lcd_putstring("CheckPoint Status:");
 		lcd_command(0xC0);
 		lcd_putstring("Passed");
+		steadyLEDQuickly();
 		return 1;
 	}
 	else{
@@ -209,6 +211,13 @@ void flashLEDQuickly(void) {
     }
     // Ensure the LED is turned off when the flashing is done.
 }
+void steadyLEDQuickly(void) {
+    // Turn the LED on for 2 seconds.
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_Delay(2000);
+    // Ensure the LED is turned off when the flashing is done.
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+}
 uint16_t recv_data(uint16_t data){
 	int bitIndex; // Index to keep track of which bit to read
 	  /* Infinite loop */
@@ -221,7 +230,7 @@ uint16_t recv_data(uint16_t data){
 			// Toggle LED0
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
 			littleEndianNumber |= (1U << bitIndex);
-				      }
+			}
 		else {
 			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
 			littleEndianNumber &= ~(1U << bitIndex);
@@ -232,34 +241,10 @@ uint16_t recv_data(uint16_t data){
 	}
 	return littleEndianNumber>>1;
 }
-uint8_t listen_start(uint8_t littleEndianNumber){
-	int bitIndex; // Index to keep track of which bit to read
-	  /* Infinite loop */
-	bitIndex = 0; // Initialize bit index
-
-	//assuming reading a 12-bit number
-	for(int i=0;i<=8;i++){
-		uint32_t adc_value = pollADC();
-		if (adc_value > 500) {
-			// Toggle LED0
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-			littleEndianNumber |= (1U << bitIndex);
-				      }
-		else {
-			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-			littleEndianNumber &= ~(1U << bitIndex);
-		}
-		// Increment the bit index and wrap around if needed
-		bitIndex = (bitIndex + 1) % 12;
-		HAL_Delay(500);
-	}
-	return littleEndianNumber;
-}
-
 uint8_t start(void){
 	uint32_t adc_value = pollADC();
 	if (adc_value > 500) {
-		HAL_Delay(700);
+		HAL_Delay(800);
 		uint32_t adc_value = pollADC();
 		if (adc_value > 500) {
 			return 1;
@@ -270,7 +255,7 @@ uint8_t start(void){
 uint8_t message_type(void){
 	uint32_t adc_value = pollADC();
 	if (adc_value > 500) {
-		HAL_Delay(500);
+		HAL_Delay(300);
 		uint32_t adc_value = pollADC();
 		if (adc_value > 500) {
 			return 1;
